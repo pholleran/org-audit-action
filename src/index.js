@@ -184,7 +184,6 @@ class CollectUserData {
         );
         return;
       }
-
       return this.result[organization].samlIdentityProvider;
     }
   }
@@ -340,7 +339,7 @@ class CollectUserData {
 
       await this.endCollection();
     } catch (error) {
-      console.log(error.message);
+      core.info(error.message);
       await this.endCollection();
     }
   }
@@ -416,14 +415,16 @@ class CollectUserData {
 
         repository.collaborators.forEach(collaborator => {
           // map collaborator login to samlIdentity
-          let samlIdentity;
+          let samlIdentity, fullName;
           if (useSamlIdentities === true) {
             samlIdentity = "";
+            fullName="";
             externalIdentities.edges.forEach(identity => {
               // handle empty response
               if (identity.node.user) {
                 if (identity.node.user.login == collaborator.login) {
                   samlIdentity = identity.node.samlIdentity.nameId;
+                  fullName = identity.node.user.name;
                 }
               }
             });
@@ -433,7 +434,7 @@ class CollectUserData {
             ...(this.enterprise ? { enterprise: this.enterprise } : null),
             organization,
             repository: repository.name,
-            name: collaborator.name,
+            name: fullName,
             login: collaborator.login,
             ...(useSamlIdentities === true
               ? { samlIdentity: samlIdentity }

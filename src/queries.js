@@ -47,6 +47,7 @@ const queries = {
                 }
                 user {
                   login
+                  name
                 }
               }
             }
