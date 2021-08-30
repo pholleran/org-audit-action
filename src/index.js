@@ -189,9 +189,30 @@ class CollectUserData {
     }
   }
 
-  async collectData(organization, collaboratorsCursor, repositoriesCursor) {
-    let data;
+  async collectData(organization) {
+    let orgResult, orgData, orgRepos, repoResult;
+    
+    // get org data
+    orgData = await this.octokit.orgs.get({org: organization});
+    orgResult = this.result[organization] = orgData.data;
+    
+    // get repos
+    orgRepos = await this.octokit.repos.listForOrg({org: organization});
+    repoResult = this.result[organization].repositories = orgRepos.data;
+
+    for (const repo of this.result[organization].repositories) {
+      core.info("Getting collaborators for " + repo.name)
+      let collabData;
+      collabData = await this.octokit.repos.listCollaborators({
+        owner: organization,
+        repo: repo.name
+      });
+      repo.collaborators = collabData.data;
+    };
+
     // fetch organization data
+
+    /*
     try {
       data = await this.requestOrgReposAndCollaborators(
         organization,
@@ -292,6 +313,8 @@ class CollectUserData {
 
       return this.result[organization];
     }
+
+    */
   }
 
   async startCollection() {
@@ -309,7 +332,7 @@ class CollectUserData {
 
         if (this.result[login]) {
           core.info(
-            `✅ Finished collecting for organization ${login}, total number of repos: ${this.result[login].repositories.nodes.length}`
+            `✅ Finished collecting for organization ${login}, total number of repos: ${this.result[login].repositories.length}`
           );
           core.endGroup();
         }
@@ -341,6 +364,16 @@ class CollectUserData {
     await this.createandUploadArtifacts();
     await this.postResultsToIssue(csv);
     process.exit();
+  }
+
+  // source: gr2m/github-organization-repository-auditing-action/blob/main/dist/index.js
+  normalizePermission(permissions) {
+    const { admin, maintain, push, triage, pull } = permissions || {};
+    if (admin) return "admin";
+    if (maintain) return "maintain";
+    if (push) return "write";
+    if (triage) return "triage";
+    if (pull) return "read";
   }
 
   normalizeResult() {
@@ -376,12 +409,12 @@ class CollectUserData {
         externalIdentities = this.result[organization].samlIdentityProvider
           .externalIdentities;
       }
-      this.result[organization].repositories.nodes.forEach(repository => {
-        if (!repository.collaborators.edges) {
+      this.result[organization].repositories.forEach(repository => {
+        if (!repository.collaborators) {
           return;
         }
 
-        repository.collaborators.edges.forEach(collaborator => {
+        repository.collaborators.forEach(collaborator => {
           // map collaborator login to samlIdentity
           let samlIdentity;
           if (useSamlIdentities === true) {
@@ -389,7 +422,7 @@ class CollectUserData {
             externalIdentities.edges.forEach(identity => {
               // handle empty response
               if (identity.node.user) {
-                if (identity.node.user.login == collaborator.node.login) {
+                if (identity.node.user.login == collaborator.login) {
                   samlIdentity = identity.node.samlIdentity.nameId;
                 }
               }
@@ -400,12 +433,12 @@ class CollectUserData {
             ...(this.enterprise ? { enterprise: this.enterprise } : null),
             organization,
             repository: repository.name,
-            name: collaborator.node.name,
-            login: collaborator.node.login,
+            name: collaborator.name,
+            login: collaborator.login,
             ...(useSamlIdentities === true
               ? { samlIdentity: samlIdentity }
               : null),
-            permission: collaborator.permission
+            permission: this.normalizePermission(collaborator.permissions)
           });
         });
       });
