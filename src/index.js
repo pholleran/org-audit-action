@@ -196,17 +196,44 @@ class CollectUserData {
     orgResult = this.result[organization] = orgData.data;
     
     // get repos
-    orgRepos = await this.octokit.repos.listForOrg({org: organization});
-    repoResult = this.result[organization].repositories = orgRepos.data;
+    // orgRepos = await this.octokit.repos.listForOrg({org: organization});
+    core.info("Fetching repositories for organization: " + organization)
+    orgRepos = await this.octokit.paginate(
+      "GET /orgs/{org}/repos", {
+        org: organization,
+        per_page: 100
+      }
+    );
 
-    for (const repo of this.result[organization].repositories) {
-      core.info("Getting collaborators for " + repo.name)
+    // repoResult = this.result[organization].repositories = orgRepos.data;
+    this.result[organization].repositories = orgRepos
+    console.log(this.result[organization].repositories.length)
+
+    // for (const repo of this.result[organization].repositories) {
+    for (let i = 0; i < this.result[organization].repositories.length; i++ ) {
+      let repoName = this.result[organization].repositories[i].name;
+      core.info("Getting collaborators for " + repoName);
       let collabData;
-      collabData = await this.octokit.repos.listCollaborators({
-        owner: organization,
-        repo: repo.name
-      });
-      repo.collaborators = collabData.data;
+
+      try {
+        collabData = await this.octokit.paginate(
+          "GET /repos/{owner}/{repo}/collaborators", {
+            owner: organization,
+            repo: repoName,
+            per_page: 100
+          }
+        );
+      } catch (error) {
+        core.info("Error while getting collaborators for: " + repoName + " " + error.message)
+      } finally {
+        if(!collabData) {
+          core.info("  No collaborators")
+        } else {
+          this.result[organization].repositories[i].collaborators = collabData;
+          core.info("  " + this.result[organization].repositories[i].collaborators.length + " collaborators retrieved")
+        }
+      };
+      
     };
 
     // fetch organization data
